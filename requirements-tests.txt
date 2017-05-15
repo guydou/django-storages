@@ -7,3 +7,5 @@ google-cloud-storage>=0.22.0
 mock
 paramiko
 pytest-cov>=2.2.1
+google-cloud>=0.25.0
+azure-storage
