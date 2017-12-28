@@ -6,7 +6,7 @@ from django.core.files.storage import Storage
 from django.utils.deconstruct import deconstructible
 from azure.storage import CloudStorageAccount
 from storages.utils import setting
-from tempfile import SpooledTemporaryFile
+from tempfile import NamedTemporaryFile
 from django.core.files.base import File
 from django.utils.encoding import force_bytes
 
@@ -41,18 +41,15 @@ class AzureStorageFile(File):
 
     def _get_file(self):
         if self._file is None:
-            self._file = SpooledTemporaryFile(
-                max_size=self._storage.max_memory_size,
+            self._file = NamedTemporaryFile(
                 suffix=".AzureBoto3StorageFile",
                 dir=setting("FILE_UPLOAD_TEMP_DIR", None)
             )
             if 'r' in self._mode:
                 self._is_dirty = False
-                # I set max connection to 1 since spooledtempfile is not seekable which is required if we use
-                # max_conection > 1
-                self._storage.connection.get_blob_to_stream(container_name=self._storage.azure_container,
-                                                            blob_name=self._name, stream=self._file,
-                                                            max_connections=1)
+                self._storage.connection.get_blob_to_path(container_name=self._storage.azure_container,
+                                                            blob_name=self._name, file_path=self._file.name,
+                                                            max_connections=10)
 
                 self._file.seek(0)
         return self._file
