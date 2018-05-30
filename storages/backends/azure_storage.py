@@ -6,8 +6,10 @@ from tempfile import NamedTemporaryFile
 from azure.common import AzureMissingResourceHttpError
 from azure.storage import CloudStorageAccount
 from azure.storage.blob import ContentSettings
+from django.conf import settings
 from django.core.files.base import File
 from django.core.files.storage import Storage
+from django.utils import timezone
 from django.utils.deconstruct import deconstructible
 
 from storages.utils import setting
@@ -158,7 +160,17 @@ class AzureStorage(Storage):
             return "{}{}/{}".format(setting('MEDIA_URL'), self.azure_container, name)
 
     def modified_time(self, name):
+        return self.get_modified_time(name)
+
+    def get_modified_time(self, name):
+        """
+        Return the last modified time (as a datetime) of the file specified by
+        name. The datetime will be timezone-aware if USE_TZ=True.
+        """
         properties = self.connection.get_blob_properties(
             self.azure_container, name).properties
         modified = properties.last_modified
-        return modified
+        if settings.USE_TZ:
+            return modified
+        else:
+            return timezone.make_naive(modified)
