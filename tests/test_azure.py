@@ -1,13 +1,12 @@
-from storages.backends import azure_storage
-from django.test import TestCase
-try:
-    from unittest import mock
-except ImportError:  # Python 3.2 and below
-    import mock
 import datetime
+from unittest import mock
+
+from azure.storage.blob import Blob, BlobBlock, BlobProperties
 from django.core.files.base import ContentFile
-from azure.storage.blob import BlobProperties, Blob, BlobBlock
+from django.test import TestCase
 from django.utils.encoding import force_bytes
+
+from storages.backends import azure_storage
 
 
 class AzureStorageTest(TestCase):
