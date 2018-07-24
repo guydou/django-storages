@@ -13,7 +13,7 @@ class AzureStorageTest(TestCase):
 
     def setUp(self, *args):
         self.storage = azure_storage.AzureStorage()
-        self.storage._connection = mock.MagicMock()
+#        self.storage._connection = mock.MagicMock()
         self.container_name = 'test'
         self.storage.azure_container = self.container_name
 
@@ -22,19 +22,20 @@ class AzureStorageTest(TestCase):
         blob_name = "blob"
         exists = self.storage.exists(blob_name)
         self.assertTrue(exists)
-        self.storage.connection.exists.assert_called_once_with(blob_name)
+        self.storage.connection.exists.assert_called_once_with(self.storage.azure_container, blob_name)
 
     def test_blob_doesnt_exists(self):
         self.storage.connection.exists.return_value = False
         blob_name = "blob"
         exists = self.storage.exists(blob_name)
         self.assertFalse(exists)
-        self.storage.connection.exists.assert_called_once_with(blob_name)
+        self.storage.connection.exists.assert_called_once_with(self.storage.azure_container, blob_name)
 
     def test_blob_open_read(self):
         mocked_binary = b"mocked test"
         blob_name = "blob_name"
         sent_kwargs = {}
+        import ipdb;ipdb.set_trace()
 
         def mocked_stream(*args, **kwargs):
             stream = kwargs['stream']
@@ -49,7 +50,6 @@ class AzureStorageTest(TestCase):
         # I am doing this trick here to validate that the method was called, I couldn't use it with
         # the known parameter since a stream is an internal object that I don't have access to
         self.storage.connection.get_blob_to_stream.assert_called_once_with(**sent_kwargs)
-
 
     def test_blob_open_text_write(self):
         mocked_text = "written text"
@@ -135,7 +135,28 @@ class AzureStorageTest(TestCase):
         time = self.storage.modified_time("name")
         self.assertEqual(accepted_time, time)
 
-    def test_url_blob(self):
+    def test_url_blob_querystring_auth_on(self):
+        """generate_blob_shared_access_signature shoul be called when querystring_auth is True"""
+        sas_token = "token"
+        url = "url"
+        blob = "blob"
+        self.storage.connection.generate_blob_shared_access_signature.return_value = sas_token
+        self.storage.connection.make_blob_url.return_value = url
+        self.storage._expire_at = mock.MagicMock(return_value=("now", 'expires_at'))
+
+        actual_url = self.storage.url(blob)
+        self.assertEqual(url, actual_url)
+        self.storage.connection.generate_blob_shared_access_signature.assert_called_once_with(
+            self.container_name, blob, 'r', expiry='expires_at')
+        self.storage.connection.make_blob_url.assert_called_once_with(blob_name=blob,
+                                                                      container_name=self.container_name,
+                                                                      sas_token=sas_token)
+
+    def test_url_blob_querystring_auth_off(self):
+        """generate_blob_shared_access_signature shouldn't be called when querystring_auth is False"""
+
+        self.storage.querystring_auth = False  # turn auth off.
+
         sas_token = "token"
         url = "url"
         blob = "blob"

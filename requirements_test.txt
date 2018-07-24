@@ -1,0 +1,15 @@
+Django>=1.8
+apache-libcloud
+azure-storage
+boto3>=1.2.3
+boto>=2.32.0
+dropbox>=8.0.0
+flake8
+google-cloud-storage>=0.22.0
+google-cloud>=0.25.0
+mock
+paramiko
+pytest 
+pytest-cov>=2.2.1
+ipython 
+ipdb

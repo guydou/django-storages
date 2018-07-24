@@ -25,9 +25,11 @@ def pad_left(n, width, pad="0"):
 
 @deconstructible
 class AzureStorageFile(File):
+    max_connections = setting("AZURE_READ_MAX_CONNECTIONS", 2)
+    file_upload_temp_dir = setting("FILE_UPLOAD_TEMP_DIR", None)
 
     def __init__(self, name, mode, storage):
-        self._name = name
+        self.name = name
         self._mode = mode
         self._storage = storage
         self._is_dirty = False
@@ -36,14 +38,14 @@ class AzureStorageFile(File):
     def _get_file(self):
         if self._file is None:
             self._file = NamedTemporaryFile(
-                suffix=".AzureBoto3StorageFile",
-                dir=setting("FILE_UPLOAD_TEMP_DIR", None)
+                suffix=".AzureStorageFile",
+                dir=self.file_upload_temp_dir
             )
             if 'r' in self._mode:
                 self._is_dirty = False
                 self._storage.connection.get_blob_to_path(container_name=self._storage.azure_container,
-                                                          blob_name=self._name, file_path=self._file.name,
-                                                          max_connections=setting("AZURE_READ_MAX_CONNECTIONS", 2))
+                                                          blob_name=self.name, file_path=self._file.name,
+                                                          max_connections=self.max_connections)
 
                 self._file.seek(0)
         return self._file
@@ -64,7 +66,7 @@ class AzureStorageFile(File):
 
     def close(self):
         if self._is_dirty:
-            self._storage.connection.create_blob_from_path(self._storage.azure_container, self._name, self._file.name)
+            self._storage.connection.create_blob_from_path(self._storage.azure_container, self.name, self._file.name)
         if self._file is not None:
             self._file.close()
             self._file = None
@@ -88,7 +90,7 @@ class AzureStorage(Storage):
     @property
     def connection(self):
         if self._connection is None:
-            account = CloudStorageAccount(self.account_name, self.account_key)
+            account = CloudStorageAccount(self.account_name, self.account_key, is_emulated=True)
             self._connection = account.create_block_blob_service()
         return self._connection
 

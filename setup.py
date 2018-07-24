@@ -13,7 +13,7 @@ setup(
     version=storages.__version__,
     packages=['storages', 'storages.backends'],
     extras_require={
-        'azure': ['azure'],
+        'azure': ['azure-storage'],
         'boto': ['boto>=2.32.0'],
         'boto3': ['boto3>=1.2.3'],
         'dropbox': ['dropbox>=7.2.1'],
