@@ -35,11 +35,17 @@ class AzureStorageTest(TestCase):
             self.storage.get_valid_name("path/to/../"),
             "path")
         self.assertEqual(
+            self.storage.get_valid_name("path\\to\\..\\"),
+            "path")
+        self.assertEqual(
             self.storage.get_valid_name("path/name/"),
             "path/name")
         self.assertEqual(
             self.storage.get_valid_name("path\\to\\somewhere"),
             "path/to/somewhere")
+        self.assertEqual(
+            self.storage.get_valid_name("some/$/path"),
+            "some/path")
         self.assertEqual(
             self.storage.get_valid_name("a" * 1024), "a" * 1024)
         self.assertRaises(ValueError, self.storage.get_valid_name, "")
@@ -50,12 +56,26 @@ class AzureStorageTest(TestCase):
         self.assertRaises(ValueError, self.storage.get_valid_name, "!!!")
         self.assertRaises(ValueError, self.storage.get_valid_name, "a" * 1025)
 
+    def test_valid_name_idempotency(self):
+        self.assertEqual(
+            self.storage.get_valid_name("//$//a//$//"), "a")
+        self.assertEqual(
+            self.storage.get_valid_name(self.storage.get_valid_name("//$//a//$//")),
+            self.storage.get_valid_name("//$//a//$//"))
+        self.assertEqual(
+            self.storage.get_valid_name("some path/some long name & then some.txt"),
+            "some_path/some_long_name__then_some.txt")
+        self.assertEqual(
+            self.storage.get_valid_name(
+                self.storage.get_valid_name("some path/some long name & then some.txt")),
+            self.storage.get_valid_name("some path/some long name & then some.txt"))
+
     def test_url(self):
         self.storage._connection.make_blob_url.return_value = 'ret_foo'
         self.assertEqual(self.storage.url('some blob'), 'ret_foo')
         self.storage._connection.make_blob_url.assert_called_once_with(
             container_name=self.container_name,
-            blob_name='some blob')
+            blob_name='some_blob')
 
     def test_url_expire(self):
         fixed_time = datetime.datetime(2016, 11, 6, 4, tzinfo=timezone.utc)
@@ -66,13 +86,13 @@ class AzureStorageTest(TestCase):
             self.assertEqual(self.storage.url('some blob', 100), 'ret_foo')
             self.storage._connection.generate_blob_shared_access_signature.assert_called_once_with(
                 self.container_name,
-                'some blob',
+                'some_blob',
                 BlobPermissions.READ,
-                expiry=(fixed_time + timedelta(seconds=100)).replace(microsecond=0).isoformat() + 'Z'
+                expiry=fixed_time + timedelta(seconds=100)
             )
             self.storage._connection.make_blob_url.assert_called_once_with(
                 container_name=self.container_name,
-                blob_name='some blob',
+                blob_name='some_blob',
                 sas_token='foo_token')
 
 

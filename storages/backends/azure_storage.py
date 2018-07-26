@@ -97,8 +97,9 @@ def _get_valid_filename(s):
     # We allow a subset of this to avoid
     # illegal file names. We must ensure it is idempotent.
     s = force_text(s)
-    s = os.path.normpath(s).replace('\\', '/').replace(' ', '_')
+    s = s.replace('\\', '/').replace(' ', '_')
     s = re.sub(r'(?u)[^-_\w./]', '', s)
+    s = os.path.normpath(s)
     return s.strip(' ./')
 
 
@@ -186,6 +187,7 @@ class AzureStorage(Storage):
         return name
 
     def _expire_at(self, expire):
+        # azure expects time in UTC
         return datetime.utcnow() + timedelta(seconds=expire)
 
     def url(self, name, expire=None):
@@ -199,7 +201,6 @@ class AzureStorage(Storage):
             sas_token = self.connection.generate_blob_shared_access_signature(
                 self.azure_container, name, BlobPermissions.READ, expiry=self._expire_at(expire))
             make_blob_url_kwargs['sas_token'] = sas_token
-            print(sas_token)
 
         if self.azure_protocol:
             make_blob_url_kwargs['protocol'] = self.azure_protocol
