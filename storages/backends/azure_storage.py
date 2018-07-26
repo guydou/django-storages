@@ -18,10 +18,6 @@ from django.utils import timezone
 from django.utils.encoding import force_text
 
 
-def clean_name(name):
-    return os.path.normpath(name).replace("\\", "/")
-
-
 @deconstructible
 class AzureStorageFile(File):
 
@@ -48,7 +44,6 @@ class AzureStorageFile(File):
             suffix=".AzureStorageFile",
             dir=setting("FILE_UPLOAD_TEMP_DIR", None))
         if 'r' in self._mode:
-            self._is_dirty = False
             # I set max connection to 1 since spooledtempfile is not seekable which is required if we use
             # max_conection > 1
             self._storage.connection.get_blob_to_stream(
@@ -101,9 +96,8 @@ def _get_valid_filename(s):
     #   * must escape URL reserved characters
     # We allow a subset of this to avoid
     # illegal file names.
-    # Note `/../` does nothing malicious
-    # since azure has virtual paths
-    s = force_text(s).strip(' ./').replace('\\', '/')
+    s = force_text(s)
+    s = os.path.normpath(s).replace('\\', '/').strip(' ./')
     return re.sub(r'(?u)[^-_\w./ ]', '', s)
 
 
