@@ -32,20 +32,22 @@ class AzureStorageTest(TestCase):
             self.storage.get_valid_name("path/to/../somewhere"),
             "path/somewhere")
         self.assertEqual(
-            self.storage.get_valid_name("path/to/../"),
-            "path")
+            self.storage.get_valid_name("path/to/../"), "path")
         self.assertEqual(
-            self.storage.get_valid_name("path\\to\\..\\"),
-            "path")
+            self.storage.get_valid_name("path\\to\\..\\"), "path")
         self.assertEqual(
-            self.storage.get_valid_name("path/name/"),
-            "path/name")
+            self.storage.get_valid_name("path/name/"), "path/name")
         self.assertEqual(
             self.storage.get_valid_name("path\\to\\somewhere"),
             "path/to/somewhere")
         self.assertEqual(
-            self.storage.get_valid_name("some/$/path"),
-            "some/path")
+            self.storage.get_valid_name("some/$/path"), "some/path")
+        self.assertEqual(
+            self.storage.get_valid_name("some///path"), "some/path")
+        self.assertEqual(
+            self.storage.get_valid_name("some//path"), "some/path")
+        self.assertEqual(
+            self.storage.get_valid_name("some\\\\path"), "some/path")
         self.assertEqual(
             self.storage.get_valid_name("a" * 1024), "a" * 1024)
         self.assertRaises(ValueError, self.storage.get_valid_name, "")
@@ -60,7 +62,8 @@ class AzureStorageTest(TestCase):
         self.assertEqual(
             self.storage.get_valid_name("//$//a//$//"), "a")
         self.assertEqual(
-            self.storage.get_valid_name(self.storage.get_valid_name("//$//a//$//")),
+            self.storage.get_valid_name(
+                self.storage.get_valid_name("//$//a//$//")),
             self.storage.get_valid_name("//$//a//$//"))
         self.assertEqual(
             self.storage.get_valid_name("some path/some long name & then some.txt"),

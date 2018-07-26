@@ -103,6 +103,10 @@ def _get_valid_filename(s):
     return s.strip(' ./')
 
 
+# Max len according to azure's docs
+_AZURE_NAME_MAX_LEN = 1024
+
+
 @deconstructible
 class AzureStorage(Storage):
 
@@ -113,6 +117,7 @@ class AzureStorage(Storage):
     max_memory_size = setting('AZURE_BLOB_MAX_MEMORY_SIZE', 0)
     buffer_size = setting('AZURE_FILE_BUFFER_SIZE', 4194304)
     expiration_secs = setting('AZURE_URL_EXPIRATION_SECS')
+    overwrite_files = setting('AZURE_OVERWRITE_FILES', True)
 
     def __init__(self):
         self._connection = None
@@ -140,15 +145,15 @@ class AzureStorage(Storage):
         """
         # XXX allow up to 256 `/` slashes
         name = _get_valid_filename(name)
-        if len(name) > 1024:
-            raise ValueError("Blob name max len is 1024")
+        if len(name) > _AZURE_NAME_MAX_LEN:
+            raise ValueError("Blob name max len is %d" % _AZURE_NAME_MAX_LEN)
         if not len(name):
             raise ValueError(
                 "A file name of one or more"
                 "printable characters is required")
         return name
 
-    def get_available_name(self, name, max_length=None):
+    def get_available_name(self, name, max_length=_AZURE_NAME_MAX_LEN):
         """
         Returns a filename that's free on the target storage system, and
         available for new content to be written to.
@@ -173,7 +178,10 @@ class AzureStorage(Storage):
         return properties.content_length
 
     def save(self, name, content, content_type=None):
-        name = self.get_valid_name(name)
+        if self.overwrite_files:
+            name = self.get_valid_name(name)
+        else:
+            name = self.get_available_name(name)
 
         if content_type is None:
             content_type = _content_type(name, content)
