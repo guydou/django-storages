@@ -95,10 +95,11 @@ def _get_valid_filename(s):
     #   * can contain any character
     #   * must escape URL reserved characters
     # We allow a subset of this to avoid
-    # illegal file names.
+    # illegal file names. We must ensure it is idempotent.
     s = force_text(s)
-    s = os.path.normpath(s).replace('\\', '/').strip(' ./')
-    return re.sub(r'(?u)[^-_\w./ ]', '', s)
+    s = os.path.normpath(s).replace('\\', '/').replace(' ', '_')
+    s = re.sub(r'(?u)[^-_\w./]', '', s)
+    return s.strip(' ./')
 
 
 @deconstructible
@@ -110,6 +111,7 @@ class AzureStorage(Storage):
     azure_ssl = setting("AZURE_SSL")
     max_memory_size = setting('AZURE_BLOB_MAX_MEMORY_SIZE', 0)
     buffer_size = setting('AZURE_FILE_BUFFER_SIZE', 4194304)
+    expiration_secs = setting('AZURE_URL_EXPIRATION_SECS')
 
     def __init__(self):
         self._connection = None
@@ -129,20 +131,6 @@ class AzureStorage(Storage):
 
     def _open(self, name, mode="rb"):
         return AzureStorageFile(name, mode, self)
-
-    def exists(self, name):
-        return self.connection.exists(self.azure_container, name)
-
-    def delete(self, name):
-        try:
-            self.connection.delete_blob(container_name=self.azure_container, blob_name=name)
-        except AzureMissingResourceHttpError:
-            pass
-
-    def size(self, name):
-        properties = self.connection.get_blob_properties(
-            self.azure_container, name).properties
-        return properties.content_length
 
     def get_valid_name(self, name):
         """
@@ -167,6 +155,22 @@ class AzureStorage(Storage):
         name = self.get_valid_name(name)
         return super(AzureStorage, self).get_available_name(name, max_length)
 
+    def exists(self, name):
+        return self.connection.exists(self.azure_container, name)
+
+    def delete(self, name):
+        try:
+            self.connection.delete_blob(
+                container_name=self.azure_container,
+                blob_name=name)
+        except AzureMissingResourceHttpError:
+            pass
+
+    def size(self, name):
+        properties = self.connection.get_blob_properties(
+            self.azure_container, name).properties
+        return properties.content_length
+
     def save(self, name, content, content_type=None):
         name = self.get_valid_name(name)
 
@@ -182,18 +186,20 @@ class AzureStorage(Storage):
         return name
 
     def _expire_at(self, expire):
-        now = datetime.utcnow()
-        now_plus_delta = now + timedelta(seconds=expire)
-        now_plus_delta = now_plus_delta.replace(microsecond=0).isoformat() + 'Z'
-        return now, now_plus_delta
+        return datetime.utcnow() + timedelta(seconds=expire)
 
     def url(self, name, expire=None):
+        name = self.get_valid_name(name)
+
+        if expire is None:
+            expire = self.expiration_secs
+
         make_blob_url_kwargs = {}
         if expire:
-            _, now_plus_delta = self._expire_at(expire)
             sas_token = self.connection.generate_blob_shared_access_signature(
-                self.azure_container, name, BlobPermissions.READ, expiry=now_plus_delta)
+                self.azure_container, name, BlobPermissions.READ, expiry=self._expire_at(expire))
             make_blob_url_kwargs['sas_token'] = sas_token
+            print(sas_token)
 
         if self.azure_protocol:
             make_blob_url_kwargs['protocol'] = self.azure_protocol
@@ -237,6 +243,8 @@ class AzureStorage(Storage):
         Leave the path empty to list the root.
         Order of dirs and files is undefined.
         """
+        path = path
+
         if path and not path.endswith('/'):
             path += '/'
         files = []
