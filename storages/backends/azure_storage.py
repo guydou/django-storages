@@ -3,11 +3,9 @@ from datetime import datetime, timedelta
 from tempfile import SpooledTemporaryFile
 import os.path
 import mimetypes
-import base64
 import re
 
 from azure.storage.common import CloudStorageAccount
-from azure.storage.blob import BlobBlock
 from azure.common import AzureMissingResourceHttpError
 from azure.storage.blob import ContentSettings, BlobPermissions
 from storages.utils import setting
@@ -16,7 +14,6 @@ from django.core.files.storage import Storage
 from django.utils.deconstruct import deconstructible
 from django.core.files.base import File
 from django.utils.encoding import force_bytes
-from django.utils.six.moves import urllib
 from django.utils import timezone
 from django.utils.encoding import force_text
 
@@ -29,7 +26,7 @@ def clean_name(name):
 class AzureStorageFile(File):
 
     def __init__(self, name, mode, storage):
-        self.name = name
+        self.name = storage.get_valid_name(name)
         self._mode = mode
         self._storage = storage
         self._is_dirty = False
@@ -41,7 +38,8 @@ class AzureStorageFile(File):
         self._block_list = list()
         self._last_commit_pos = 0
 
-    def _get_file(self):
+    @property
+    def file(self):
         if self._file is not None:
             return self._file
 
@@ -61,8 +59,6 @@ class AzureStorageFile(File):
             self._file.seek(0)
         return self._file
 
-    file = property(_get_file)
-
     def read(self, *args, **kwargs):
         if 'r' not in self._mode:
             raise AttributeError("File was not opened in read mode.")
@@ -74,49 +70,14 @@ class AzureStorageFile(File):
         if 'w' not in self._mode:
             raise AttributeError("File was not opened in write mode.")
         self._is_dirty = True
-        ret = super(AzureStorageFile, self).write(force_bytes(content))
-        if self._needs_flush():
-            self._flush_all_buffers()
-        return ret
-
-    def _needs_flush(self, current_pos=None):
-        if not(current_pos):
-            current_pos = self.file.tell()
-        buffer_size = current_pos - self._last_commit_pos
-        ret_val = buffer_size >= self._storage.buffer_size
-        return ret_val
-
-    def _flush_buffer(self):
-        self._write_counter += 1
-        block_id = '{:064d}'.format(self._write_counter).encode('utf-8')
-        block_id = base64.urlsafe_b64encode(block_id)
-        block_id = urllib.parse.quote_plus(block_id)
-        self.file.seek(self._last_commit_pos)
-        content = self.file.read(self._storage.buffer_size)
-        self._storage.connection.put_block(
-            self._storage.azure_container, self.name, content, block_id)
-        self._block_list.append(BlobBlock(block_id))
-        self._last_commit_pos = self.file.tell()
-
-    def _flush_all_buffers(self):
-        """
-        Flushes the write buffer.
-        """
-        pos_before_flush = self.file.tell()
-        while self._needs_flush(pos_before_flush):
-            self._flush_buffer()
-        self.file.seek(pos_before_flush)
+        return super(AzureStorageFile, self).write(force_bytes(content))
 
     def close(self):
         if self._file is None:
             return
         if self._is_dirty:
-            self._flush_buffer()
-        # Commit blobs
-        self._storage.connection.put_block_list(
-            self._storage.azure_container,
-            self.name,
-            self._block_list)
+            self._storage.save(self.name, self._file)
+            self._is_dirty = False
         self._file.close()
         self._file = None
 
@@ -142,7 +103,7 @@ def _get_valid_filename(s):
     # illegal file names.
     # Note `/../` does nothing malicious
     # since azure has virtual paths
-    s = force_text(s).strip(' ./')
+    s = force_text(s).strip(' ./').replace('\\', '/')
     return re.sub(r'(?u)[^-_\w./ ]', '', s)
 
 
@@ -235,7 +196,7 @@ class AzureStorage(Storage):
     def url(self, name, expire=None):
         make_blob_url_kwargs = {}
         if expire:
-            now, now_plus_delta = self._expire_at(expire)
+            _, now_plus_delta = self._expire_at(expire)
             sas_token = self.connection.generate_blob_shared_access_signature(
                 self.azure_container, name, BlobPermissions.READ, expiry=now_plus_delta)
             make_blob_url_kwargs['sas_token'] = sas_token
