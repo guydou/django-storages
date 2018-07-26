@@ -143,14 +143,19 @@ class AzureStorage(Storage):
         Returns a filename, based on the provided filename, that's suitable for
         use in the target storage system.
         """
-        # XXX allow up to 256 `/` slashes
+        # Follow azure blob name constrains
         name = _get_valid_filename(name)
         if len(name) > _AZURE_NAME_MAX_LEN:
-            raise ValueError("Blob name max len is %d" % _AZURE_NAME_MAX_LEN)
+            raise ValueError(
+                "File name max len is %d" % _AZURE_NAME_MAX_LEN)
         if not len(name):
             raise ValueError(
-                "A file name of one or more"
-                "printable characters is required")
+                "File name must contain one or more "
+                "printable characters")
+        if name.count('/') > 256:
+            raise ValueError(
+                "File name must not contain "
+                "more than 256 slashes")
         return name
 
     def get_available_name(self, name, max_length=_AZURE_NAME_MAX_LEN):
@@ -158,8 +163,9 @@ class AzureStorage(Storage):
         Returns a filename that's free on the target storage system, and
         available for new content to be written to.
         """
-        name = self.get_valid_name(name)
-        return super(AzureStorage, self).get_available_name(name, max_length)
+        name = _get_valid_filename(name)
+        name = super(AzureStorage, self).get_available_name(name, max_length)
+        return self.get_valid_name(name)  # extra validations
 
     def exists(self, name):
         return self.connection.exists(self.azure_container, name)

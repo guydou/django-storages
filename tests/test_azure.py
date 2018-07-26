@@ -50,6 +50,8 @@ class AzureStorageTest(TestCase):
             self.storage.get_valid_name("some\\\\path"), "some/path")
         self.assertEqual(
             self.storage.get_valid_name("a" * 1024), "a" * 1024)
+        self.assertEqual(
+            self.storage.get_valid_name("a/a" * 256), "a/a" * 256)
         self.assertRaises(ValueError, self.storage.get_valid_name, "")
         self.assertRaises(ValueError, self.storage.get_valid_name, "/")
         self.assertRaises(ValueError, self.storage.get_valid_name, "/../")
@@ -57,6 +59,7 @@ class AzureStorageTest(TestCase):
         self.assertRaises(ValueError, self.storage.get_valid_name, "///")
         self.assertRaises(ValueError, self.storage.get_valid_name, "!!!")
         self.assertRaises(ValueError, self.storage.get_valid_name, "a" * 1025)
+        self.assertRaises(ValueError, self.storage.get_valid_name, "a/a" * 257)
 
     def test_valid_name_idempotency(self):
         self.assertEqual(
@@ -72,6 +75,39 @@ class AzureStorageTest(TestCase):
             self.storage.get_valid_name(
                 self.storage.get_valid_name("some path/some long name & then some.txt")),
             self.storage.get_valid_name("some path/some long name & then some.txt"))
+
+    def test_get_available_name(self):
+        self.storage._connection.exists.side_effect = [True, False]
+        name = self.storage.get_available_name('foo.txt')
+        self.assertTrue(name.startswith('foo_'))
+        self.assertTrue(name.endswith('.txt'))
+        self.assertTrue(len(name) > len('foo.txt'))
+        self.assertEqual(self.storage._connection.exists.call_count, 2)
+
+    def test_get_available_name_first(self):
+        self.storage._connection.exists.return_value = False
+        self.assertEqual(
+            self.storage.get_available_name('foo bar baz.txt'),
+            'foo_bar_baz.txt')
+        self.assertEqual(self.storage._connection.exists.call_count, 1)
+
+    def test_get_available_name_max_len(self):
+        self.storage._connection.exists.side_effect = [False]
+        self.assertEqual(
+            self.storage.get_available_name('a' * 1024),
+            'a' * 1024)
+        self.assertEqual(self.storage._connection.exists.call_count, 1)
+        self.storage._connection.exists.reset_mock()
+        self.storage._connection.exists.side_effect = [True, False]
+        name = self.storage.get_available_name('a' * 3000)  # max_len == 1024
+        self.assertEqual(len(name), 1024)
+        self.assertTrue('_' in name)
+        self.assertEqual(self.storage._connection.exists.call_count, 2)
+
+    def test_get_available_invalid(self):
+        self.storage._connection.exists.return_value = False
+        self.assertRaises(ValueError, self.storage.get_available_name, "")
+        self.assertRaises(ValueError, self.storage.get_available_name, "$$")
 
     def test_url(self):
         self.storage._connection.make_blob_url.return_value = 'ret_foo'
@@ -91,8 +127,7 @@ class AzureStorageTest(TestCase):
                 self.container_name,
                 'some_blob',
                 BlobPermissions.READ,
-                expiry=fixed_time + timedelta(seconds=100)
-            )
+                expiry=fixed_time + timedelta(seconds=100))
             self.storage._connection.make_blob_url.assert_called_once_with(
                 container_name=self.container_name,
                 blob_name='some_blob',
