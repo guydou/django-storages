@@ -134,7 +134,7 @@ class AzureStorage(Storage):
     azure_container = setting("AZURE_CONTAINER")
     azure_ssl = setting("AZURE_SSL")
     max_memory_size = setting('AZURE_BLOB_MAX_MEMORY_SIZE', 0)
-    buffer_size = setting('AZURE_FILE_BUFFER_SIZE', 4194304)
+    buffer_size = setting('AZURE_FILE_BUFFER_SIZE', 8*1024)
     expiration_secs = setting('AZURE_URL_EXPIRATION_SECS')
     overwrite_files = setting('AZURE_OVERWRITE_FILES', True)
     _location = setting('AZURE_LOCATION', '')
