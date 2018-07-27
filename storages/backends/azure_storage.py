@@ -16,6 +16,10 @@ from django.core.files.base import File
 from django.utils.encoding import force_bytes
 from django.utils import timezone
 from django.utils.encoding import force_text
+from django.core.exceptions import SuspiciousOperation, SuspiciousFileOperation
+from django.utils.crypto import get_random_string
+
+from storages.utils import clean_name, safe_join
 
 
 @deconstructible
@@ -89,23 +93,37 @@ def _content_type(name, content):
     return mimetypes.guess_type(name)[0]
 
 
-def _get_valid_filename(s):
+def _get_valid_path(s):
     # A blob name:
     #   * must not end with dot or slash
     #   * can contain any character
     #   * must escape URL reserved characters
     # We allow a subset of this to avoid
     # illegal file names. We must ensure it is idempotent.
-    s = force_text(s)
-    s = s.replace('\\', '/').replace(' ', '_')
-    s = re.sub(r'(?u)[^-_\w./]', '', s)
-    s = os.path.normpath(s)
-    return s.strip(' ./')
+    s = force_text(s).strip().replace(' ', '_')
+    s = re.sub(r'(?u)[^-\w./]', '', s)
+    s = s.replace('//', '/').strip('./')
+    if len(s) > _AZURE_NAME_MAX_LEN:
+        raise ValueError(
+            "File name max len is %d" % _AZURE_NAME_MAX_LEN)
+    if not len(s):
+        raise ValueError(
+            "File name must contain one or more "
+            "printable characters")
+    if s.count('/') > 256:
+        raise ValueError(
+            "File name must not contain "
+            "more than 256 slashes")
+    return s
 
 
 # Max len according to azure's docs
 _AZURE_NAME_MAX_LEN = 1024
 
+# TODO: allow /path/to/ignored/../something.txt (use url_join?)
+# TODO: add default self.location
+# TODO: implement FileSystemStorage.get_created_time
+# todo: implement FileSystemStorage.location and FileSystemStorage.base_url
 
 @deconstructible
 class AzureStorage(Storage):
@@ -118,9 +136,11 @@ class AzureStorage(Storage):
     buffer_size = setting('AZURE_FILE_BUFFER_SIZE', 4194304)
     expiration_secs = setting('AZURE_URL_EXPIRATION_SECS')
     overwrite_files = setting('AZURE_OVERWRITE_FILES', True)
+    _location = setting('AZURE_LOCATION', '')
 
     def __init__(self):
         self._connection = None
+        self.location = self._location or ''
 
     @property
     def connection(self):
@@ -135,62 +155,49 @@ class AzureStorage(Storage):
             return 'https'
         return 'http' if self.azure_ssl is not None else None
 
-    def _open(self, name, mode="rb"):
-        return AzureStorageFile(name, mode, self)
+    def _path(self, name):
+        try:
+            return safe_join(self.location, clean_name(name))
+        except ValueError:
+            raise SuspiciousOperation("Attempted access to '%s' denied." % name)
 
-    def get_valid_name(self, name):
-        """
-        Returns a filename, based on the provided filename, that's suitable for
-        use in the target storage system.
-        """
-        # Follow azure blob name constrains
-        name = _get_valid_filename(name)
-        if len(name) > _AZURE_NAME_MAX_LEN:
-            raise ValueError(
-                "File name max len is %d" % _AZURE_NAME_MAX_LEN)
-        if not len(name):
-            raise ValueError(
-                "File name must contain one or more "
-                "printable characters")
-        if name.count('/') > 256:
-            raise ValueError(
-                "File name must not contain "
-                "more than 256 slashes")
-        return name
+    def _get_valid_path(self, name):
+        # Must be idempotent
+        return _get_valid_path(self._path(name))
+
+    def _open(self, name, mode="rb"):
+        return AzureStorageFile(self._get_valid_path(name), mode, self)
 
     def get_available_name(self, name, max_length=_AZURE_NAME_MAX_LEN):
         """
         Returns a filename that's free on the target storage system, and
         available for new content to be written to.
         """
-        name = _get_valid_filename(name)
-        name = super(AzureStorage, self).get_available_name(name, max_length)
-        return self.get_valid_name(name)  # extra validations
+        if self.overwrite_files:
+            return _get_valid_path(clean_name(name))
+        name = _get_valid_path(clean_name(name))
+        return super(AzureStorage, self).get_available_name(name, max_length)
 
     def exists(self, name):
-        return self.connection.exists(self.azure_container, name)
+        return self.connection.exists(
+            self.azure_container, self._get_valid_path(name))
 
     def delete(self, name):
         try:
             self.connection.delete_blob(
                 container_name=self.azure_container,
-                blob_name=name)
+                blob_name=self._get_valid_path(name))
         except AzureMissingResourceHttpError:
             pass
 
     def size(self, name):
         properties = self.connection.get_blob_properties(
-            self.azure_container, name).properties
+            self.azure_container, self._get_valid_path(name)).properties
         return properties.content_length
 
-    def save(self, name, content, content_type=None):
-        if self.overwrite_files:
-            name = self.get_valid_name(name)
-        else:
-            name = self.get_available_name(name)
-
-        if content_type is None:
-            content_type = _content_type(name, content)
+    def _save(self, name, content):
+        name = self._get_valid_path(name)
+        content_type = _content_type(name, content)
 
         content_settings = ContentSettings(content_type=content_type)
         self.connection.create_blob_from_stream(
@@ -205,7 +212,7 @@ class AzureStorage(Storage):
         return datetime.utcnow() + timedelta(seconds=expire)
 
     def url(self, name, expire=None):
-        name = self.get_valid_name(name)
+        name = self._get_valid_path(name)
 
         if expire is None:
             expire = self.expiration_secs
@@ -229,7 +236,7 @@ class AzureStorage(Storage):
         USE_TZ is True, otherwise returns a naive datetime in the local timezone.
         """
         properties = self.connection.get_blob_properties(
-            self.azure_container, name).properties
+            self.azure_container, self._get_valid_path(name)).properties
         if setting('USE_TZ'):
             # `last_modified` is in UTC time_zone, we
             # must convert it to settings time_zone
@@ -247,6 +254,10 @@ class AzureStorage(Storage):
 
     def list_all(self, path=''):
         """Return all files for a given path"""
+        if path:
+            path = self._get_valid_path(path)
+        if path and not path.endswith('/'):
+            path += '/'
         return [
             blob.name
             for blob in self.connection.list_blobs(
@@ -258,10 +269,6 @@ class AzureStorage(Storage):
         Leave the path empty to list the root.
         Order of dirs and files is undefined.
         """
-        path = path
-
-        if path and not path.endswith('/'):
-            path += '/'
         files = []
         dirs = set()
         for name in self.list_all(path):

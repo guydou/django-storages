@@ -24,59 +24,64 @@ class AzureStorageTest(TestCase):
         self.container_name = 'test'
         self.storage.azure_container = self.container_name
 
-    def test_valid_name(self):
+    def test_get_valid_path(self):
         self.assertEqual(
-            self.storage.get_valid_name("path/to/somewhere"),
+            self.storage._get_valid_path("path/to/somewhere"),
             "path/to/somewhere")
         self.assertEqual(
-            self.storage.get_valid_name("path/to/../somewhere"),
+            self.storage._get_valid_path("path/to/../somewhere"),
             "path/somewhere")
         self.assertEqual(
-            self.storage.get_valid_name("path/to/../"), "path")
+            self.storage._get_valid_path("path/to/../"), "path")
         self.assertEqual(
-            self.storage.get_valid_name("path\\to\\..\\"), "path")
+            self.storage._get_valid_path("path\\to\\..\\"), "path")
         self.assertEqual(
-            self.storage.get_valid_name("path/name/"), "path/name")
+            self.storage._get_valid_path("path/name/"), "path/name")
         self.assertEqual(
-            self.storage.get_valid_name("path\\to\\somewhere"),
+            self.storage._get_valid_path("path\\to\\somewhere"),
             "path/to/somewhere")
         self.assertEqual(
-            self.storage.get_valid_name("some/$/path"), "some/path")
+            self.storage._get_valid_path("some/$/path"), "some/path")
         self.assertEqual(
-            self.storage.get_valid_name("some///path"), "some/path")
+            self.storage._get_valid_path("/$/path"), "path")
         self.assertEqual(
-            self.storage.get_valid_name("some//path"), "some/path")
+            self.storage._get_valid_path("path/$/"), "path")
         self.assertEqual(
-            self.storage.get_valid_name("some\\\\path"), "some/path")
+            self.storage._get_valid_path("some///path"), "some/path")
         self.assertEqual(
-            self.storage.get_valid_name("a" * 1024), "a" * 1024)
+            self.storage._get_valid_path("some//path"), "some/path")
         self.assertEqual(
-            self.storage.get_valid_name("a/a" * 256), "a/a" * 256)
-        self.assertRaises(ValueError, self.storage.get_valid_name, "")
-        self.assertRaises(ValueError, self.storage.get_valid_name, "/")
-        self.assertRaises(ValueError, self.storage.get_valid_name, "/../")
-        self.assertRaises(ValueError, self.storage.get_valid_name, "..")
-        self.assertRaises(ValueError, self.storage.get_valid_name, "///")
-        self.assertRaises(ValueError, self.storage.get_valid_name, "!!!")
-        self.assertRaises(ValueError, self.storage.get_valid_name, "a" * 1025)
-        self.assertRaises(ValueError, self.storage.get_valid_name, "a/a" * 257)
+            self.storage._get_valid_path("some\\\\path"), "some/path")
+        self.assertEqual(
+            self.storage._get_valid_path("a" * 1024), "a" * 1024)
+        self.assertEqual(
+            self.storage._get_valid_path("a/a" * 256), "a/a" * 256)
+        self.assertRaises(ValueError, self.storage._get_valid_path, "")
+        self.assertRaises(ValueError, self.storage._get_valid_path, "/")
+        self.assertRaises(ValueError, self.storage._get_valid_path, "/../")
+        self.assertRaises(ValueError, self.storage._get_valid_path, "..")
+        self.assertRaises(ValueError, self.storage._get_valid_path, "///")
+        self.assertRaises(ValueError, self.storage._get_valid_path, "!!!")
+        self.assertRaises(ValueError, self.storage._get_valid_path, "a" * 1025)
+        self.assertRaises(ValueError, self.storage._get_valid_path, "a/a" * 257)
 
-    def test_valid_name_idempotency(self):
+    def test_get_valid_path_idempotency(self):
         self.assertEqual(
-            self.storage.get_valid_name("//$//a//$//"), "a")
+            self.storage._get_valid_path("//$//a//$//"), "a")
         self.assertEqual(
-            self.storage.get_valid_name(
-                self.storage.get_valid_name("//$//a//$//")),
-            self.storage.get_valid_name("//$//a//$//"))
+            self.storage._get_valid_path(
+                self.storage._get_valid_path("//$//a//$//")),
+            self.storage._get_valid_path("//$//a//$//"))
         self.assertEqual(
-            self.storage.get_valid_name("some path/some long name & then some.txt"),
+            self.storage._get_valid_path("some path/some long name & then some.txt"),
             "some_path/some_long_name__then_some.txt")
         self.assertEqual(
-            self.storage.get_valid_name(
-                self.storage.get_valid_name("some path/some long name & then some.txt")),
-            self.storage.get_valid_name("some path/some long name & then some.txt"))
+            self.storage._get_valid_path(
+                self.storage._get_valid_path("some path/some long name & then some.txt")),
+            self.storage._get_valid_path("some path/some long name & then some.txt"))
 
     def test_get_available_name(self):
+        self.storage.overwrite_files = False
         self.storage._connection.exists.side_effect = [True, False]
         name = self.storage.get_available_name('foo.txt')
         self.assertTrue(name.startswith('foo_'))
@@ -85,6 +90,7 @@ class AzureStorageTest(TestCase):
         self.assertEqual(self.storage._connection.exists.call_count, 2)
 
     def test_get_available_name_first(self):
+        self.storage.overwrite_files = False
         self.storage._connection.exists.return_value = False
         self.assertEqual(
             self.storage.get_available_name('foo bar baz.txt'),
@@ -92,19 +98,19 @@ class AzureStorageTest(TestCase):
         self.assertEqual(self.storage._connection.exists.call_count, 1)
 
     def test_get_available_name_max_len(self):
-        self.storage._connection.exists.side_effect = [False]
-        self.assertEqual(
-            self.storage.get_available_name('a' * 1024),
-            'a' * 1024)
-        self.assertEqual(self.storage._connection.exists.call_count, 1)
-        self.storage._connection.exists.reset_mock()
+        self.storage.overwrite_files = False
+        # if you wonder why this is, file-system
+        # storage will raise when file name is too long as well,
+        # the form should validate this
+        self.assertRaises(ValueError, self.storage.get_available_name, 'a' * 1025)
         self.storage._connection.exists.side_effect = [True, False]
-        name = self.storage.get_available_name('a' * 3000)  # max_len == 1024
-        self.assertEqual(len(name), 1024)
+        name = self.storage.get_available_name('a' * 1000, max_length=100)  # max_len == 1024
+        self.assertEqual(len(name), 100)
         self.assertTrue('_' in name)
         self.assertEqual(self.storage._connection.exists.call_count, 2)
 
     def test_get_available_invalid(self):
+        self.storage.overwrite_files = False
         self.storage._connection.exists.return_value = False
         self.assertRaises(ValueError, self.storage.get_available_name, "")
         self.assertRaises(ValueError, self.storage.get_available_name, "$$")
