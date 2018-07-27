@@ -125,10 +125,6 @@ def _get_valid_path(s):
 # Max len according to azure's docs
 _AZURE_NAME_MAX_LEN = 1024
 
-# TODO: allow /path/to/ignored/../something.txt (use url_join?)
-# TODO: add default self.location
-# TODO: implement FileSystemStorage.get_created_time
-# todo: implement FileSystemStorage.location and FileSystemStorage.base_url
 
 @deconstructible
 class AzureStorage(Storage):

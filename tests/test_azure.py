@@ -7,13 +7,11 @@ import datetime
 from datetime import timezone, timedelta
 from gzip import GzipFile
 
-from azure.storage.blob import ContentSettings, BlobPermissions
-from azure.storage.blob import BlobProperties, Blob, BlobBlock
-
+from azure.storage.blob import BlobPermissions
+from azure.storage.blob import BlobProperties, Blob
 
 from django.test import TestCase
 from django.core.files.base import ContentFile
-from django.utils.encoding import force_bytes
 
 from storages.backends import azure_storage
 
