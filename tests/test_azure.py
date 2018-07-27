@@ -5,9 +5,11 @@ except ImportError:  # Python 3.2 and below
     import mock
 import datetime
 from datetime import timezone, timedelta
+from gzip import GzipFile
 
 from azure.storage.blob import ContentSettings, BlobPermissions
 from azure.storage.blob import BlobProperties, Blob, BlobBlock
+
 
 from django.test import TestCase
 from django.core.files.base import ContentFile
@@ -138,6 +140,67 @@ class AzureStorageTest(TestCase):
                 container_name=self.container_name,
                 blob_name='some_blob',
                 sas_token='foo_token')
+
+    # From boto3
+
+    def test_storage_save(self):
+        """
+        Test saving a file
+        """
+        name = 'test storage save.txt'
+        content = ContentFile('new content')
+        with mock.patch('storages.backends.azure_storage.ContentSettings') as c_mocked:
+            c_mocked.return_value = 'content_settings_foo'
+            self.assertEqual(self.storage.save(name, content), 'test_storage_save.txt')
+            self.storage._connection.create_blob_from_stream.assert_called_once_with(
+                container_name=self.container_name,
+                blob_name='test_storage_save.txt',
+                stream=content,
+                content_settings='content_settings_foo')
+            c_mocked.assert_called_once_with(
+                content_type='text/plain',
+                content_encoding=None)
+
+    def test_storage_save_gzipped(self):
+        """
+        Test saving a gzipped file
+        """
+        name = 'test_storage_save.gz'
+        content = ContentFile("I am gzip'd")
+        self.storage.gzip = False
+        with mock.patch('storages.backends.azure_storage.ContentSettings') as c_mocked:
+            c_mocked.return_value = 'content_settings_foo'
+            self.assertEqual(self.storage.save(name, content), 'test_storage_save.gz')
+            self.storage._connection.create_blob_from_stream.assert_called_once_with(
+                container_name=self.container_name,
+                blob_name='test_storage_save.gz',
+                stream=content,
+                content_settings='content_settings_foo')
+            c_mocked.assert_called_once_with(
+                content_type='application/octet-stream',
+                content_encoding='gzip')
+
+    def test_storage_save_gzipped_enaled(self):
+        """
+        Test saving a gzipped file
+        """
+        name = 'test_storage_save.css'
+        content = ContentFile("I should be gzip'd")
+        self.storage.gzip = True
+        with mock.patch('storages.backends.azure_storage.ContentSettings') as c_mocked:
+            c_mocked.return_value = 'content_settings_foo'
+            self.assertEqual(self.storage.save(name, content), name)
+            self.storage._connection.create_blob_from_stream.assert_called_once_with(
+                container_name=self.container_name,
+                blob_name=name,
+                stream=mock.ANY,
+                content_settings='content_settings_foo')
+            c_mocked.assert_called_once_with(
+                content_type='application/octet-stream',
+                content_encoding='gzip')
+        _args, kwargs = self.storage._connection.create_blob_from_stream.call_args
+        zfile = GzipFile(mode='rb', fileobj=kwargs['stream'])
+        self.assertEqual(zfile.read(), b"I should be gzip'd")
 
 
 """

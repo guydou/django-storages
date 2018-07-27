@@ -1,9 +1,9 @@
 from __future__ import unicode_literals
 from datetime import datetime, timedelta
 from tempfile import SpooledTemporaryFile
-import os.path
 import mimetypes
 import re
+from gzip import GzipFile
 
 from azure.storage.common import CloudStorageAccount
 from azure.common import AzureMissingResourceHttpError
@@ -16,8 +16,8 @@ from django.core.files.base import File
 from django.utils.encoding import force_bytes
 from django.utils import timezone
 from django.utils.encoding import force_text
-from django.core.exceptions import SuspiciousOperation, SuspiciousFileOperation
-from django.utils.crypto import get_random_string
+from django.core.exceptions import SuspiciousOperation
+from django.utils.six import io
 
 from storages.utils import clean_name, safe_join
 
@@ -90,7 +90,7 @@ def _content_type(name, content):
         return content.content_type
     except AttributeError:
         pass
-    return mimetypes.guess_type(name)[0]
+    return None
 
 
 def _get_valid_path(s):
@@ -137,6 +137,15 @@ class AzureStorage(Storage):
     expiration_secs = setting('AZURE_URL_EXPIRATION_SECS')
     overwrite_files = setting('AZURE_OVERWRITE_FILES', True)
     _location = setting('AZURE_LOCATION', '')
+    gzip = setting('AZURE_IS_GZIPPED', False)
+    gzip_content_types = setting('AZURE_GZIP_CONTENT_TYPES', {
+        'text/css',
+        'text/javascript',
+        'application/javascript',
+        'application/x-javascript',
+        'image/svg+xml',
+    })
+    default_content_type = 'application/octet-stream'
 
     def __init__(self):
         self._connection = None
@@ -195,16 +204,38 @@ class AzureStorage(Storage):
             self.azure_container, self._get_valid_path(name)).properties
         return properties.content_length
 
+    def _compress_content(self, content):
+        """Gzip a given string content"""
+        content.seek(0)
+        zbuf = io.BytesIO()
+        zfile = GzipFile(mode='wb', compresslevel=6, fileobj=zbuf, mtime=0.0)
+        try:
+            zfile.write(force_bytes(content.read()))
+        finally:
+            zfile.close()
+        zbuf.seek(0)
+        return zbuf
+
     def _save(self, name, content):
         name = self._get_valid_path(name)
-        content_type = _content_type(name, content)
+        guessed_type, content_encoding = mimetypes.guess_type(name)
+        content_type = (
+            _content_type(name, content) or
+            guessed_type or
+            self.default_content_type)
 
-        content_settings = ContentSettings(content_type=content_type)
+        if self.gzip and content_type in self.gzip_content_types:
+            content = self._compress_content(content)
+            content_type = 'application/octet-stream'
+            content_encoding = 'gzip'
+
         self.connection.create_blob_from_stream(
             container_name=self.azure_container,
             blob_name=name,
             stream=content,
-            content_settings=content_settings)
+            content_settings=ContentSettings(
+                content_type=content_type,
+                content_encoding=content_encoding))
         return name
 
     def _expire_at(self, expire):
