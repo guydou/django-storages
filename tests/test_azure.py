@@ -155,7 +155,7 @@ class AzureStorageTest(TestCase):
             self.storage._connection.create_blob_from_stream.assert_called_once_with(
                 container_name=self.container_name,
                 blob_name='test_storage_save.txt',
-                stream=content,
+                stream=content.file,
                 content_settings='content_settings_foo')
             c_mocked.assert_called_once_with(
                 content_type='text/plain',
@@ -174,7 +174,7 @@ class AzureStorageTest(TestCase):
             self.storage._connection.create_blob_from_stream.assert_called_once_with(
                 container_name=self.container_name,
                 blob_name='test_storage_save.gz',
-                stream=content,
+                stream=content.file,
                 content_settings='content_settings_foo')
             c_mocked.assert_called_once_with(
                 content_type='application/octet-stream',
@@ -202,6 +202,34 @@ class AzureStorageTest(TestCase):
         zfile = GzipFile(mode='rb', fileobj=kwargs['stream'])
         self.assertEqual(zfile.read(), b"I should be gzip'd")
 
+    def test_compress_content_len(self):
+        """
+        Test that file returned by _compress_content() is readable.
+        """
+        self.storage.gzip = True
+        content = ContentFile("I should be gzip'd")
+        content = self.storage._compress_content(content)
+        self.assertTrue(len(content.read()) > 0)
+
+    def test_storage_open_write(self):
+        """
+        Test opening a file in write mode
+        """
+        name = 'test_open_for_writïng.txt'
+        content = 'new content'
+
+        file = self.storage.open(name, 'w')
+        self.storage._connection._put_blob.assert_called_once_with(
+            self.container_name, name, None)
+
+        file.write(content)
+        written_file = file.file
+        file.close()
+        self.storage._connection.create_blob_from_stream.assert_called_once_with(
+            container_name=self.container_name,
+            blob_name=name,
+            stream=written_file,
+            content_settings=mock.ANY)
 
 """
     def test_blob_exists(self):

@@ -38,8 +38,7 @@ class AzureStorageFile(File):
         self._block_list = list()
         self._last_commit_pos = 0
 
-    @property
-    def file(self):
+    def _get_file(self):
         if self._file is not None:
             return self._file
 
@@ -58,6 +57,11 @@ class AzureStorageFile(File):
             self._file.seek(0)
         return self._file
 
+    def _set_file(self, value):
+        self._file = value
+
+    file = property(_get_file, _set_file)
+
     def read(self, *args, **kwargs):
         if 'r' not in self._mode:
             raise AttributeError("File was not opened in read mode.")
@@ -75,6 +79,7 @@ class AzureStorageFile(File):
         if self._file is None:
             return
         if self._is_dirty:
+            self._file.seek(0)
             self._storage.save(self.name, self._file)
             self._is_dirty = False
         self._file.close()
@@ -228,6 +233,10 @@ class AzureStorage(Storage):
             content = self._compress_content(content)
             content_type = 'application/octet-stream'
             content_encoding = 'gzip'
+
+        # Unwrap django file (wrapped by parent's save call)
+        if isinstance(content, File):
+            content = content.file
 
         self.connection.create_blob_from_stream(
             container_name=self.azure_container,
