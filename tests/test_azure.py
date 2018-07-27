@@ -231,21 +231,70 @@ class AzureStorageTest(TestCase):
             stream=written_file,
             content_settings=mock.ANY)
 
+    def test_storage_exists(self):
+        self.storage._connection.exists.return_value = True
+        blob_name = "blob"
+        self.assertTrue(self.storage.exists(blob_name))
+        self.storage._connection.exists.assert_called_once_with(
+            self.container_name, blob_name)
+
+    def test_delete_blob(self):
+        self.storage.delete("name")
+        self.storage._connection.delete_blob.assert_called_once_with(
+            container_name=self.container_name,
+            blob_name="name")
+
+    def test_storage_listdir_base(self):
+        file_names = ["some/path/1.txt", "2.txt", "other/path/3.txt", "4.txt"]
+
+        result = []
+        for p in file_names:
+            obj = mock.MagicMock()
+            obj.name = p
+            result.append(obj)
+        self.storage._connection.list_blobs.return_value = iter(result)
+
+        dirs, files = self.storage.listdir("")
+        self.storage._connection.list_blobs.assert_called_with(
+            self.container_name, prefix="")
+
+        self.assertEqual(len(dirs), 2)
+        for directory in ["some", "other"]:
+            self.assertTrue(
+                directory in dirs,
+                """ "%s" not in directory list "%s".""" % (directory, dirs))
+
+        self.assertEqual(len(files), 2)
+        for filename in ["2.txt", "4.txt"]:
+            self.assertTrue(
+                filename in files,
+                """ "%s" not in file list "%s".""" % (filename, files))
+
+    def test_storage_listdir_subdir(self):
+        file_names = ["some/path/1.txt", "some/2.txt"]
+
+        result = []
+        for p in file_names:
+            obj = mock.MagicMock()
+            obj.name = p
+            result.append(obj)
+        self.storage._connection.list_blobs.return_value = iter(result)
+
+        dirs, files = self.storage.listdir("some/")
+        self.storage._connection.list_blobs.assert_called_with(
+            self.container_name, prefix="some/")
+
+        self.assertEqual(len(dirs), 1)
+        self.assertTrue(
+            'path' in dirs,
+            """ "path" not in directory list "%s".""" % (dirs,))
+
+        self.assertEqual(len(files), 1)
+        self.assertTrue(
+            '2.txt' in files,
+            """ "2.txt" not in files list "%s".""" % (files,))
+
 """
-    def test_blob_exists(self):
-        self.storage.connection.exists.return_value = True
-        blob_name = "blob"
-        exists = self.storage.exists(blob_name)
-        self.assertTrue(exists)
-        self.storage.connection.exists.assert_called_once_with(blob_name)
-
-    def test_blob_doesnt_exists(self):
-        self.storage.connection.exists.return_value = False
-        blob_name = "blob"
-        exists = self.storage.exists(blob_name)
-        self.assertFalse(exists)
-        self.storage.connection.exists.assert_called_once_with(blob_name)
-
     def test_blob_open_read(self):
         mocked_binary = b"mocked test"
         blob_name = "blob_name"
@@ -330,10 +379,7 @@ class AzureStorageTest(TestCase):
         for blob_block in put_block_args[0][2]:
             self.assertIsInstance(blob_block, BlobBlock)
 
-    def test_delete_blob(self):
-        self.storage.delete("name")
-        self.storage.connection.delete_blob.assert_called_once_with(container_name=self.container_name,
-                                                                    blob_name="name")
+
 
     def test_size_of_file(self):
         props = BlobProperties()
