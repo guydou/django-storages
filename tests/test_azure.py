@@ -154,7 +154,9 @@ class AzureStorageTest(TestCase):
                 container_name=self.container_name,
                 blob_name='test_storage_save.txt',
                 stream=content.file,
-                content_settings='content_settings_foo')
+                content_settings='content_settings_foo',
+                max_connections=2,
+                timeout=20)
             c_mocked.assert_called_once_with(
                 content_type='text/plain',
                 content_encoding=None)
@@ -173,7 +175,9 @@ class AzureStorageTest(TestCase):
                 container_name=self.container_name,
                 blob_name='test_storage_save.gz',
                 stream=content.file,
-                content_settings='content_settings_foo')
+                content_settings='content_settings_foo',
+                max_connections=2,
+                timeout=20)
             c_mocked.assert_called_once_with(
                 content_type='application/octet-stream',
                 content_encoding='gzip')
@@ -192,7 +196,9 @@ class AzureStorageTest(TestCase):
                 container_name=self.container_name,
                 blob_name=name,
                 stream=mock.ANY,
-                content_settings='content_settings_foo')
+                content_settings='content_settings_foo',
+                max_connections=2,
+                timeout=20)
             c_mocked.assert_called_once_with(
                 content_type='application/octet-stream',
                 content_encoding='gzip')
@@ -218,7 +224,7 @@ class AzureStorageTest(TestCase):
 
         file = self.storage.open(name, 'w')
         self.storage._connection._put_blob.assert_called_once_with(
-            self.container_name, name, None)
+            self.container_name, name, None, timeout=20)
 
         file.write(content)
         written_file = file.file
@@ -227,20 +233,23 @@ class AzureStorageTest(TestCase):
             container_name=self.container_name,
             blob_name=name,
             stream=written_file,
-            content_settings=mock.ANY)
+            content_settings=mock.ANY,
+            max_connections=2,
+            timeout=20)
 
     def test_storage_exists(self):
         self.storage._connection.exists.return_value = True
         blob_name = "blob"
         self.assertTrue(self.storage.exists(blob_name))
         self.storage._connection.exists.assert_called_once_with(
-            self.container_name, blob_name)
+            self.container_name, blob_name, timeout=20)
 
     def test_delete_blob(self):
         self.storage.delete("name")
         self.storage._connection.delete_blob.assert_called_once_with(
             container_name=self.container_name,
-            blob_name="name")
+            blob_name="name",
+            timeout=20)
 
     def test_storage_listdir_base(self):
         file_names = ["some/path/1.txt", "2.txt", "other/path/3.txt", "4.txt"]
@@ -254,7 +263,7 @@ class AzureStorageTest(TestCase):
 
         dirs, files = self.storage.listdir("")
         self.storage._connection.list_blobs.assert_called_with(
-            self.container_name, prefix="")
+            self.container_name, prefix="", timeout=20)
 
         self.assertEqual(len(dirs), 2)
         for directory in ["some", "other"]:
@@ -280,7 +289,7 @@ class AzureStorageTest(TestCase):
 
         dirs, files = self.storage.listdir("some/")
         self.storage._connection.list_blobs.assert_called_with(
-            self.container_name, prefix="some/")
+            self.container_name, prefix="some/", timeout=20)
 
         self.assertEqual(len(dirs), 1)
         self.assertTrue(

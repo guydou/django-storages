@@ -33,7 +33,10 @@ class AzureStorageFile(File):
         self._file = None
         if 'w' in self._mode:
             self._storage.connection._put_blob(
-                self._storage.azure_container, self.name, None)
+                self._storage.azure_container,
+                self.name,
+                None,
+                timeout=self._storage.timeout)
         self._write_counter = 0
         self._block_list = list()
         self._last_commit_pos = 0
@@ -53,7 +56,8 @@ class AzureStorageFile(File):
                 container_name=self._storage.azure_container,
                 blob_name=self.name,
                 stream=self._file,
-                max_connections=1)
+                max_connections=1,
+                timeout=self._storage.timeout)
             self._file.seek(0)
         return self._file
 
@@ -133,8 +137,9 @@ class AzureStorage(Storage):
     account_key = setting("AZURE_ACCOUNT_KEY")
     azure_container = setting("AZURE_CONTAINER")
     azure_ssl = setting("AZURE_SSL")
-    max_memory_size = setting('AZURE_BLOB_MAX_MEMORY_SIZE', 0)
-    buffer_size = setting('AZURE_FILE_BUFFER_SIZE', 8*1024)
+    upload_max_conn = setting("AZURE_UPLOAD_MAX_CONN", 2)
+    timeout = setting('AZURE_CONNECTION_TIMEOUT_SECS', 20)
+    max_memory_size = setting('AZURE_BLOB_MAX_MEMORY_SIZE', 2*1024*1024)
     expiration_secs = setting('AZURE_URL_EXPIRATION_SECS')
     overwrite_files = setting('AZURE_OVERWRITE_FILES', True)
     _location = setting('AZURE_LOCATION', '')
@@ -190,19 +195,24 @@ class AzureStorage(Storage):
 
     def exists(self, name):
         return self.connection.exists(
-            self.azure_container, self._get_valid_path(name))
+            self.azure_container,
+            self._get_valid_path(name),
+            timeout=self.timeout)
 
     def delete(self, name):
         try:
             self.connection.delete_blob(
                 container_name=self.azure_container,
-                blob_name=self._get_valid_path(name))
+                blob_name=self._get_valid_path(name),
+                timeout = self.timeout)
         except AzureMissingResourceHttpError:
             pass
 
     def size(self, name):
         properties = self.connection.get_blob_properties(
-            self.azure_container, self._get_valid_path(name)).properties
+            self.azure_container,
+            self._get_valid_path(name),
+            timeout=self.timeout).properties
         return properties.content_length
 
     def _compress_content(self, content):
@@ -240,7 +250,9 @@ class AzureStorage(Storage):
             stream=content,
             content_settings=ContentSettings(
                 content_type=content_type,
-                content_encoding=content_encoding))
+                content_encoding=content_encoding),
+            max_connections=self.upload_max_conn,
+            timeout=self.timeout)
         return name
 
     def _expire_at(self, expire):
@@ -272,7 +284,9 @@ class AzureStorage(Storage):
         USE_TZ is True, otherwise returns a naive datetime in the local timezone.
         """
         properties = self.connection.get_blob_properties(
-            self.azure_container, self._get_valid_path(name)).properties
+            self.azure_container,
+            self._get_valid_path(name),
+            timeout=self.timeout).properties
         if setting('USE_TZ'):
             # `last_modified` is in UTC time_zone, we
             # must convert it to settings time_zone
@@ -294,10 +308,13 @@ class AzureStorage(Storage):
             path = self._get_valid_path(path)
         if path and not path.endswith('/'):
             path += '/'
+        # XXX make generator, add start, end
         return [
             blob.name
             for blob in self.connection.list_blobs(
-                self.azure_container, prefix=path)]
+                self.azure_container,
+                prefix=path,
+                timeout=self.timeout)]
 
     def listdir(self, path=''):
         """
