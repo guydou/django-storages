@@ -297,10 +297,10 @@ class AzureStorage(Storage):
         tz = timezone.get_current_timezone()
         if timezone.is_naive(properties.last_modified):
             return timezone.make_aware(properties.last_modified, tz)
-        else:
-            # `last_modified` is in UTC time_zone, we
-            # must convert it to settings time_zone
-            return properties.last_modified.astimezone(tz)
+
+        # `last_modified` is in UTC time_zone, we
+        # must convert it to settings time_zone
+        return properties.last_modified.astimezone(tz)
 
     def modified_time(self, name):
         """Returns a naive datetime object containing the last modified time."""
