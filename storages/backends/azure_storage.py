@@ -152,6 +152,7 @@ class AzureStorage(Storage):
         'image/svg+xml',
     })
     default_content_type = 'application/octet-stream'
+    is_emulated = setting('AZURE_EMULATED_MODE', False)
 
     def __init__(self):
         self._connection = None
@@ -160,7 +161,10 @@ class AzureStorage(Storage):
     @property
     def connection(self):
         if self._connection is None:
-            account = CloudStorageAccount(self.account_name, self.account_key)
+            account = CloudStorageAccount(
+                self.account_name,
+                self.account_key,
+                is_emulated=self.is_emulated)
             self._connection = account.create_block_blob_service()
         return self._connection
 
@@ -287,13 +291,16 @@ class AzureStorage(Storage):
             self.azure_container,
             self._get_valid_path(name),
             timeout=self.timeout).properties
-        if setting('USE_TZ'):
+        if not setting('USE_TZ', False):
+            return timezone.make_naive(properties.last_modified)
+
+        tz = timezone.get_current_timezone()
+        if timezone.is_naive(properties.last_modified):
+            return timezone.make_aware(properties.last_modified, tz)
+        else:
             # `last_modified` is in UTC time_zone, we
             # must convert it to settings time_zone
-            tz = timezone.get_current_timezone()
             return properties.last_modified.astimezone(tz)
-        else:
-            return timezone.make_naive(properties.last_modified)
 
     def modified_time(self, name):
         """Returns a naive datetime object containing the last modified time."""
