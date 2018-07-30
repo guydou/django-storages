@@ -187,15 +187,18 @@ class AzureStorage(Storage):
     def _open(self, name, mode="rb"):
         return AzureStorageFile(self._get_valid_path(name), mode, self)
 
+    def get_valid_name(self, name):
+        return _get_valid_path(clean_name(name))
+
     def get_available_name(self, name, max_length=_AZURE_NAME_MAX_LEN):
         """
         Returns a filename that's free on the target storage system, and
         available for new content to be written to.
         """
         if self.overwrite_files:
-            return _get_valid_path(clean_name(name))
-        name = _get_valid_path(clean_name(name))
-        return super(AzureStorage, self).get_available_name(name, max_length)
+            return self.get_valid_name(name)
+        return super(AzureStorage, self).get_available_name(
+            self.get_valid_name(name), max_length)
 
     def exists(self, name):
         return self.connection.exists(
@@ -208,7 +211,7 @@ class AzureStorage(Storage):
             self.connection.delete_blob(
                 container_name=self.azure_container,
                 blob_name=self._get_valid_path(name),
-                timeout = self.timeout)
+                timeout=self.timeout)
         except AzureMissingResourceHttpError:
             pass
 
@@ -232,6 +235,7 @@ class AzureStorage(Storage):
         return zbuf
 
     def _save(self, name, content):
+        name_only = self.get_valid_name(name)
         name = self._get_valid_path(name)
         guessed_type, content_encoding = mimetypes.guess_type(name)
         content_type = (
@@ -257,7 +261,7 @@ class AzureStorage(Storage):
                 content_encoding=content_encoding),
             max_connections=self.upload_max_conn,
             timeout=self.timeout)
-        return name
+        return name_only
 
     def _expire_at(self, expire):
         # azure expects time in UTC
