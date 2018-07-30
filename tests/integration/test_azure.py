@@ -1,8 +1,3 @@
-try:
-    from unittest import mock
-except ImportError:  # Python 3.2 and below
-    import mock
-
 import io
 
 from django.test import TestCase, override_settings
