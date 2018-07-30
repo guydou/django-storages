@@ -31,7 +31,30 @@ class AzureStorageTest(TestCase):
             self.storage.azure_container, public_access=False, fail_on_exist=False)
 
     def test_save(self):
+        expected_name = "some_blob_Ϊ.txt"
+        self.assertFalse(self.storage.exists(expected_name))
         stream = io.BytesIO(b'Im a stream')
         name = self.storage.save('some blob Ϊ.txt', stream)
-        self.assertEqual(name, "some_blob_Ϊ.txt")
-        self.assertTrue(self.storage.exists(name))
+        self.assertEqual(name, expected_name)
+        self.assertTrue(self.storage.exists(expected_name))
+
+    def test_delete(self):
+        self.storage.location = 'path'
+        expected_name = "some_blob_Ϊ.txt"
+        self.assertFalse(self.storage.exists(expected_name))
+        stream = io.BytesIO(b'Im a stream')
+        name = self.storage.save('some blob Ϊ.txt', stream)
+        self.assertEqual(name, expected_name)
+        self.assertTrue(self.storage.exists(expected_name))
+        self.storage.delete(expected_name)
+        self.assertFalse(self.storage.exists(expected_name))
+
+    def test_size(self):
+        self.storage.location = 'path'
+        expected_name = "some_path/some_blob_Ϊ.txt"
+        self.assertFalse(self.storage.exists(expected_name))
+        stream = io.BytesIO(b'Im a stream')
+        name = self.storage.save('some path/some blob Ϊ.txt', stream)
+        self.assertEqual(name, expected_name)
+        self.assertTrue(self.storage.exists(expected_name))
+        self.assertEqual(self.storage.size(expected_name), len(b'Im a stream'))
