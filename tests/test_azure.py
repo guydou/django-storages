@@ -147,6 +147,30 @@ class AzureStorageTest(TestCase):
                 sas_token='foo_token',
                 protocol='https')
 
+    def test_blob_service_params(self):
+        storage = azure_storage.AzureStorage()
+        storage.is_emulated = True
+        storage.endpoint_suffix = 'foo_suffix'
+        storage.account_name = 'foo_name'
+        storage.account_key = 'foo_key'
+        storage.sas_token = 'foo_token'
+        storage.azure_ssl = True
+        storage.custom_domain = 'foo_domain'
+        storage.connection_string = 'foo_conn'
+        storage.token_credential = 'foo_cred'
+        with mock.patch('storages.backends.azure_storage.BlockBlobService') as c_mocked:
+            self.assertIsNotNone(storage.service)
+            c_mocked.assert_called_once_with(
+                account_name='foo_name',
+                account_key='foo_key',
+                sas_token='foo_token',
+                is_emulated=True,
+                protocol='https',
+                custom_domain='foo_domain',
+                connection_string='foo_conn',
+                token_credential='foo_cred',
+                endpoint_suffix='foo_suffix')
+
     # From boto3
 
     def test_storage_save(self):
