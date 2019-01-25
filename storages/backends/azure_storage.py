@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+import io
 import mimetypes
 import re
 from datetime import datetime, timedelta
@@ -238,15 +239,32 @@ class AzureStorage(Storage):
         if isinstance(content, File):
             content = content.file
 
-        self.service.create_blob_from_stream(
-            container_name=self.azure_container,
-            blob_name=name,
-            stream=content,
-            content_settings=ContentSettings(
-                content_type=content_type,
-                content_encoding=content_encoding),
-            max_connections=self.upload_max_conn,
-            timeout=self.timeout)
+        # create_blob_from_stream does not support files opened
+        # in text mode, nor streams of text. We convert to bytes here
+        # if at all possible
+        if isinstance(content, io.StringIO) and content.seekable():
+            content = io.BytesIO(
+                content.read().encode(content.encoding or 'utf-8'))
+
+        must_close = False
+        if hasattr(content, 'mode') and 'b' not in content.mode:
+            must_close = True
+            content = io.open(content.name, 'r')
+
+        try:
+            self.service.create_blob_from_stream(
+                container_name=self.azure_container,
+                blob_name=name,
+                stream=content,
+                content_settings=ContentSettings(
+                    content_type=content_type,
+                    content_encoding=content_encoding),
+                max_connections=self.upload_max_conn,
+                timeout=self.timeout)
+        finally:
+            if must_close:
+                content.close()
+
         return name_only
 
     def _expire_at(self, expire):
