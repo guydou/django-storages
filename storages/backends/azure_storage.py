@@ -230,7 +230,7 @@ class AzureStorage(Storage):
             self.default_content_type)
 
         # Unwrap django file (wrapped by parent's save call)
-        if isinstance(content, File):
+        while isinstance(content, File):
             content = content.file
 
         # create_blob_from_stream does not support files opened

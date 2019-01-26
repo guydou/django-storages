@@ -5,7 +5,7 @@ from __future__ import unicode_literals
 import io
 
 from django import forms
-from django.core.files.base import ContentFile
+from django.core.files.base import ContentFile, File
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.template import Context, Template
@@ -288,9 +288,21 @@ class AzureStorageDjangoTest(TestCase):
             foo_file=ContentFile('some plain text', 'foo.txt'))
         self.assertEqual(
             simple_file.foo_file.read(), b'some plain text')
+        self.assertEqual(
+            simple_file.foo_file.name, 'foo_uploads/foo.txt')
 
     def test_model_create_content_bytes(self):
         simple_file = SimpleFileModel.objects.create(
             foo_file=ContentFile(b'some plain text', 'foo.txt'))
         self.assertEqual(
             simple_file.foo_file.read(), b'some plain text')
+        self.assertEqual(
+            simple_file.foo_file.name, 'foo_uploads/foo.txt')
+
+    def test_model_wrapped_file_content(self):
+        simple_file = SimpleFileModel.objects.create(
+            foo_file=File(ContentFile('some plain text', 'foo.txt')))
+        self.assertEqual(
+            simple_file.foo_file.read(), b'some plain text')
+        self.assertEqual(
+            simple_file.foo_file.name, 'foo_uploads/foo.txt')
