@@ -60,15 +60,9 @@ class AzureStorageFile(File):
     file = property(_get_file, _set_file)
 
     def read(self, *args, **kwargs):
-        if 'r' not in self._mode and 'a' not in self._mode:
-            raise AttributeError("File was not opened in read mode.")
         return super(AzureStorageFile, self).read(*args, **kwargs)
 
     def write(self, content):
-        if ('w' not in self._mode and
-                '+' not in self._mode and
-                'a' not in self._mode):
-            raise AttributeError("File was not opened in write mode.")
         self._is_dirty = True
         return super(AzureStorageFile, self).write(force_bytes(content))
 
@@ -243,13 +237,12 @@ class AzureStorage(Storage):
         # in text mode, nor streams of text. We convert to bytes here
         # if at all possible
         if isinstance(content, io.StringIO) and content.seekable():
-            content = io.BytesIO(
-                content.read().encode(content.encoding or 'utf-8'))
+            content = io.BytesIO(content.read().encode('utf-8'))
 
         must_close = False
-        if hasattr(content, 'mode') and 'b' not in content.mode:
-            must_close = True
-            content = io.open(content.name, 'r')
+        #if hasattr(content, 'mode') and 'b' not in content.mode:
+        #    must_close = True
+        #    content = io.open(content.name, 'rb')
 
         try:
             self.service.create_blob_from_stream(

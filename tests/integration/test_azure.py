@@ -5,6 +5,7 @@ from __future__ import unicode_literals
 import io
 
 from django import forms
+from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.template import Context, Template
@@ -33,6 +34,22 @@ class AzureStorageTest(TestCase):
         self.assertFalse(self.storage.exists(expected_name))
         stream = io.BytesIO(b'Im a stream')
         name = self.storage.save('some blob Ϊ.txt', stream)
+        self.assertEqual(name, expected_name)
+        self.assertTrue(self.storage.exists(expected_name))
+
+    def test_save_content(self):
+        expected_name = "foo.txt"
+        self.assertFalse(self.storage.exists(expected_name))
+        content = ContentFile('some plain text', name=expected_name)
+        name = self.storage.save(content.name, content)
+        self.assertEqual(name, expected_name)
+        self.assertTrue(self.storage.exists(expected_name))
+
+    def test_save_content_bytes(self):
+        expected_name = "foo.txt"
+        self.assertFalse(self.storage.exists(expected_name))
+        content = ContentFile(b'some text', name=expected_name)
+        name = self.storage.save(content.name, content)
         self.assertEqual(name, expected_name)
         self.assertTrue(self.storage.exists(expected_name))
 
@@ -265,3 +282,15 @@ class AzureStorageDjangoTest(TestCase):
             self.assertEqual(fh.read(), b'foo content')
         finally:
             fh.close()
+
+    def test_model_create_content(self):
+        simple_file = SimpleFileModel.objects.create(
+            foo_file=ContentFile('some plain text', 'foo.txt'))
+        self.assertEqual(
+            simple_file.foo_file.read(), b'some plain text')
+
+    def test_model_create_content_bytes(self):
+        simple_file = SimpleFileModel.objects.create(
+            foo_file=ContentFile(b'some plain text', 'foo.txt'))
+        self.assertEqual(
+            simple_file.foo_file.read(), b'some plain text')
