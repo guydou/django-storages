@@ -76,6 +76,36 @@ class AzureStorageFile(File):
         self._file.close()
         self._file = None
 
+    # These were added in Django 1.11
+
+    @property
+    def closed(self):
+        return not self.file or self.file.closed
+
+    def readable(self):
+        if self.closed:
+            return False
+        if hasattr(self.file, 'readable'):
+            return self.file.readable()
+        return True
+
+    def writable(self):
+        if self.closed:
+            return False
+        if hasattr(self.file, 'writable'):
+            return self.file.writable()
+        return 'w' in getattr(self.file, 'mode', '')
+
+    def seekable(self):
+        if self.closed:
+            return False
+        if hasattr(self.file, 'seekable'):
+            return self.file.seekable()
+        return True
+
+    def __iter__(self):
+        return iter(self.file)
+
 
 def _content_type(content):
     try:
@@ -229,34 +259,33 @@ class AzureStorage(Storage):
             guessed_type or
             self.default_content_type)
 
-        # Unwrap django file (wrapped by parent's save call)
+        # This is only necessary in Django < 1.11
+        # this way we either get the azure file which
+        # implements seekable, etc, or the underlying
+        # file which may implement seekable
+        # XXX remove in django 1.11
         while isinstance(content, File):
+            if isinstance(content, AzureStorageFile):
+                break
             content = content.file
 
+        content.seek(0)
+
         # create_blob_from_stream does not support files opened
-        # in text mode, nor streams of text. We convert to bytes here
-        # if at all possible
-        if isinstance(content, io.StringIO) and content.seekable():
+        # in text mode, nor streams of text
+        # XXX remove this and make users pass bytes?
+        if isinstance(content, io.StringIO):
             content = io.BytesIO(content.read().encode('utf-8'))
 
-        must_close = False
-        #if hasattr(content, 'mode') and 'b' not in content.mode:
-        #    must_close = True
-        #    content = io.open(content.name, 'rb')
-
-        try:
-            self.service.create_blob_from_stream(
-                container_name=self.azure_container,
-                blob_name=name,
-                stream=content,
-                content_settings=ContentSettings(
-                    content_type=content_type,
-                    content_encoding=content_encoding),
-                max_connections=self.upload_max_conn,
-                timeout=self.timeout)
-        finally:
-            if must_close:
-                content.close()
+        self.service.create_blob_from_stream(
+            container_name=self.azure_container,
+            blob_name=name,
+            stream=content,
+            content_settings=ContentSettings(
+                content_type=content_type,
+                content_encoding=content_encoding),
+            max_connections=self.upload_max_conn,
+            timeout=self.timeout)
 
         return name_only
 
