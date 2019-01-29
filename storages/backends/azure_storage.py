@@ -277,12 +277,6 @@ class AzureStorage(Storage):
 
         content.seek(0)
 
-        # create_blob_from_stream does not support files opened
-        # in text mode, nor streams of text
-        # XXX remove this and make users pass bytes?
-        if isinstance(content, io.StringIO):
-            content = io.BytesIO(content.read().encode('utf-8'))
-
         self.service.create_blob_from_stream(
             container_name=self.azure_container,
             blob_name=name,
