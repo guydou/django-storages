@@ -127,7 +127,7 @@ class AzureStorageTest(TestCase):
         self.assertEqual(self.storage.url('some blob'), 'ret_foo')
         self.storage._service.make_blob_url.assert_called_once_with(
             container_name=self.container_name,
-            blob_name='some blob',
+            blob_name='some%20blob',
             protocol='https')
 
     def test_url_expire(self):
@@ -145,7 +145,7 @@ class AzureStorageTest(TestCase):
                 expiry=fixed_time + timedelta(seconds=100))
             self.storage._service.make_blob_url.assert_called_once_with(
                 container_name=self.container_name,
-                blob_name='some blob',
+                blob_name='some%20blob',
                 sas_token='foo_token',
                 protocol='https')
 
