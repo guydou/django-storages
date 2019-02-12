@@ -12,7 +12,7 @@ from django.core.files.base import File
 from django.core.files.storage import Storage
 from django.utils import timezone
 from django.utils.deconstruct import deconstructible
-from django.utils.encoding import force_bytes
+from django.utils.encoding import force_bytes, filepath_to_uri
 
 from storages.utils import (
     clean_name,
@@ -291,7 +291,7 @@ class AzureStorage(Storage):
             make_blob_url_kwargs['protocol'] = self.azure_protocol
         return self.service.make_blob_url(
             container_name=self.azure_container,
-            blob_name=name,
+            blob_name=filepath_to_uri(name),
             **make_blob_url_kwargs)
 
     def get_modified_time(self, name):
