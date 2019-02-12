@@ -214,9 +214,8 @@ class AzureStorage(Storage):
         available for new content to be written to.
         """
         if self.overwrite_files:
-            return self.get_valid_name(name)
-        return super(AzureStorage, self).get_available_name(
-            self.get_valid_name(name), max_length)
+            return clean_name(name)
+        return super(AzureStorage, self).get_available_name(name, max_length)
 
     def exists(self, name):
         return self.service.exists(
