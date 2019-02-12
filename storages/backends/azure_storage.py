@@ -1,8 +1,6 @@
 from __future__ import unicode_literals
 
-import io
 import mimetypes
-import re
 from datetime import datetime, timedelta
 from tempfile import SpooledTemporaryFile
 
@@ -14,9 +12,13 @@ from django.core.files.base import File
 from django.core.files.storage import Storage
 from django.utils import timezone
 from django.utils.deconstruct import deconstructible
-from django.utils.encoding import force_bytes, force_text
+from django.utils.encoding import force_bytes
 
-from storages.utils import clean_name, safe_join, setting
+from storages.utils import (
+    clean_name,
+    safe_join,
+    setting,
+)
 
 
 @deconstructible
@@ -124,10 +126,6 @@ def _get_valid_path(s):
     #   * must not end with dot or slash
     #   * can contain any character
     #   * must escape URL reserved characters
-    # We allow a subset of this to avoid
-    # illegal file names. We must ensure it is idempotent.
-    s = force_text(s).strip().replace(' ', '_')
-    s = re.sub(r'(?u)[^-\w./]', '', s)
     s = s.strip('./')
     if len(s) > _AZURE_NAME_MAX_LEN:
         raise ValueError(
@@ -141,12 +139,6 @@ def _get_valid_path(s):
             "File name must not contain "
             "more than 256 slashes")
     return s
-
-
-def _clean_name_dance(name):
-    # `get_valid_path` may return `foo/../bar`
-    name = name.replace('\\', '/')
-    return clean_name(_get_valid_path(clean_name(name)))
 
 
 # Max len according to azure's docs
@@ -201,8 +193,7 @@ class AzureStorage(Storage):
         else:
             return 'http'
 
-    def _path(self, name):
-        name = _clean_name_dance(name)
+    def _normalize_name(self, name):
         try:
             return safe_join(self.location, name)
         except ValueError:
@@ -210,13 +201,12 @@ class AzureStorage(Storage):
 
     def _get_valid_path(self, name):
         # Must be idempotent
-        return _get_valid_path(self._path(name))
+        return _get_valid_path(
+            self._normalize_name(
+                clean_name(name)))
 
     def _open(self, name, mode="rb"):
         return AzureStorageFile(name, mode, self)
-
-    def get_valid_name(self, name):
-        return _clean_name_dance(name)
 
     def get_available_name(self, name, max_length=_AZURE_NAME_MAX_LEN):
         """
@@ -251,19 +241,13 @@ class AzureStorage(Storage):
         return properties.content_length
 
     def _save(self, name, content):
-        name_only = self.get_valid_name(name)
+        cleaned_name = clean_name(name)
         name = self._get_valid_path(name)
         guessed_type, content_encoding = mimetypes.guess_type(name)
         content_type = (
             _content_type(content) or
             guessed_type or
             self.default_content_type)
-        # XXX this is almost always what one wants,
-        #     plus loading/downloading the file later
-        #     will auto decode the file :0
-        #     see https://github.com/Azure/azure-storage-python/issues/548
-        if content_encoding == 'gzip':
-            content_encoding = None
 
         # This is only necessary in Django < 1.11
         # this way we either get the azure file which
@@ -286,8 +270,7 @@ class AzureStorage(Storage):
                 content_encoding=content_encoding),
             max_connections=self.upload_max_conn,
             timeout=self.timeout)
-
-        return name_only
+        return cleaned_name
 
     def _expire_at(self, expire):
         # azure expects time in UTC
