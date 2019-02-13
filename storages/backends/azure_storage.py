@@ -247,6 +247,12 @@ class AzureStorage(Storage):
             _content_type(content) or
             guessed_type or
             self.default_content_type)
+        # XXX this is almost always what one wants,
+        #     plus loading/downloading the file later
+        #     will auto decode the file :0
+        #     see https://github.com/Azure/azure-storage-python/issues/548
+        if content_encoding == 'gzip':
+            content_encoding = None
 
         # This is only necessary in Django < 1.11
         # this way we either get the azure file which
